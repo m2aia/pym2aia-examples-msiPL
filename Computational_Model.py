@@ -10,8 +10,8 @@ Implementation of msiPL (Abdelmoula et al): Neural Network Architecture (VAE_BN)
 import numpy as np
 from keras.layers import Lambda, Input, Dense, ReLU, BatchNormalization
 from keras.models import Model
-from keras.losses import  categorical_crossentropy
-from keras.utils import plot_model
+from keras.losses import  mean_squared_error
+from keras.utils.vis_utils import plot_model
 from keras import backend as K
 
 
@@ -49,8 +49,8 @@ class VAE_BN(object):
         # Reparametrization Tric:
         z = Lambda(self.sampling, output_shape = (self.latent_dim,), name='z')([z_mean, z_log_var])
         encoder = Model(inputs, [z_mean, z_log_var, z], name = 'encoder')
-        print("==== Encoder Architecture...")
-        encoder.summary()
+        # print("==== Encoder Architecture...")
+        # encoder.summary()
         # plot_model(encoder, to_file='VAE_BN_encoder.png', show_shapes=True)
         
         # =========== 2. Encoder Model================
@@ -58,24 +58,24 @@ class VAE_BN(object):
         hdec = Dense(self.intermediate_dim)(latent_inputs)
         hdec = BatchNormalization()(hdec)
         hdec = ReLU()(hdec)
-        outputs = Dense(self.nSpecFeatures, activation = 'sigmoid')(hdec)
-        decoder = Model(latent_inputs, outputs, name = 'decoder')
-        print("==== Decoder Architecture...")
-        decoder.summary()       
+        outputs = Dense(self.nSpecFeatures)(hdec)
+        self.decoder = Model(latent_inputs, outputs, name = 'decoder')
+        # print("==== Decoder Architecture...")
+        # self.decoder.summary()       
         # plot_model(decoder, to_file='VAE_BN__decoder.png', show_shapes=True)
         
         #=========== VAE_BN: Encoder_Decoder ================
-        outputs = decoder(encoder(inputs)[2])
+        outputs = self.decoder(encoder(inputs)[2])
         VAE_BN_model = Model(inputs, outputs, name='VAE_BN')
         
         # ====== Cost Function (Variational Lower Bound)  ==============
-        "KL-div (regularizes encoder) and reconstruction loss (of the decoder): see equation(3) in our paper"
+        # "KL-div (regularizes encoder) and reconstruction loss (of the decoder): see equation(3) in our paper"
         # 1. KL-Divergence:
-        kl_Loss = 1 + self.z_log_var - K.square(self.z_mean) - K.exp(self.z_log_var)
+        kl_Loss = 1 + z_log_var - K.square(z_mean) - K.exp(z_log_var)
         kl_Loss = K.sum(kl_Loss, axis=-1)
         kl_Loss *= -0.5
         # 2. Reconstruction Loss
-        reconstruction_loss = categorical_crossentropy(inputs,outputs) # Use sigmoid at output layer
+        reconstruction_loss = mean_squared_error(inputs,outputs) # Use sigmoid at output layer
         reconstruction_loss *= self.nSpecFeatures
         
         # ========== Compile VAE_BN model ===========
