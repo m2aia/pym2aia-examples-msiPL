@@ -11,7 +11,7 @@ import numpy as np
 from keras.layers import Lambda, Input, Dense, ReLU, BatchNormalization
 from keras.models import Model
 from keras.losses import  mean_squared_error
-from keras.utils.vis_utils import plot_model
+# from keras.utils.vis_utils import plot_model
 from keras import backend as K
 
 
