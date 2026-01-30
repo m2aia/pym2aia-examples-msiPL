@@ -22,9 +22,9 @@ from __future__ import division
 from __future__ import print_function
 
 import numpy as np
+import tensorflow as tf
 np.random.seed(1337)
-from tensorflow import set_random_seed
-set_random_seed(2)
+tf.random.set_seed(2)
 
 import os
 import h5py

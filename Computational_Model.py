@@ -8,11 +8,37 @@ Implementation of msiPL (Abdelmoula et al): Neural Network Architecture (VAE_BN)
 """
 
 import numpy as np
-from keras.layers import Lambda, Input, Dense, ReLU, BatchNormalization
-from keras.models import Model
-from keras.losses import  mean_squared_error
-# from keras.utils.vis_utils import plot_model
-from keras import backend as K
+import tensorflow as tf
+from tensorflow import keras
+from tensorflow.keras.layers import Lambda, Input, Dense, ReLU, BatchNormalization, Layer
+from tensorflow.keras.models import Model
+# from tensorflow.keras.utils import plot_model
+
+
+class VAELossLayer(Layer):
+    """Custom layer to compute VAE loss"""
+    def __init__(self, n_features, **kwargs):
+        super(VAELossLayer, self).__init__(**kwargs)
+        self.n_features = n_features
+        
+    def call(self, inputs):
+        """Inputs: [z_mean, z_log_var, x_true, x_pred]"""
+        z_mean, z_log_var, x_true, x_pred = inputs
+        
+        # KL divergence
+        kl_loss = 1.0 + z_log_var - tf.square(z_mean) - tf.exp(z_log_var)
+        kl_loss = tf.reduce_sum(kl_loss, axis=-1)
+        kl_loss *= -0.5
+        
+        # Reconstruction loss
+        reconstruction_loss = tf.reduce_mean(tf.square(x_true - x_pred), axis=-1)
+        reconstruction_loss *= self.n_features
+        
+        # Total loss
+        total_loss = tf.reduce_mean(reconstruction_loss + kl_loss)
+        self.add_loss(total_loss)
+        
+        return x_pred
 
 
 class VAE_BN(object):
@@ -22,16 +48,17 @@ class VAE_BN(object):
         self.intermediate_dim = intermediate_dim
         self.latent_dim = latent_dim
         
+    @tf.function
     def sampling(self, args):
         """
         Reparameterization trick by sampling from a continuous function (Gaussian with an auxiliary variable ~N(0,1)).
         [see Our methods and for more details see arXiv:1312.6114]
         """
-        self.z_mean, self.z_log_var = args
-        self.batch = K.shape(self.z_mean)[0]
-        self.dim = K.int_shape(self.z_mean)[1]
-        self.epsilon = K.random_normal(shape=(self.batch, self.dim)) # random_normal (mean=0 and std=1)
-        return self.z_mean + K.exp(0.5 * self.z_log_var) * self.epsilon
+        z_mean, z_log_var = args
+        batch = tf.shape(z_mean)[0]
+        dim = tf.shape(z_mean)[1]
+        epsilon = tf.random.normal(shape=(batch, dim)) # random_normal (mean=0 and std=1)
+        return z_mean + tf.exp(0.5 * z_log_var) * epsilon
     
 
     def get_architecture(self):
@@ -65,22 +92,16 @@ class VAE_BN(object):
         # plot_model(decoder, to_file='VAE_BN__decoder.png', show_shapes=True)
         
         #=========== VAE_BN: Encoder_Decoder ================
-        outputs = self.decoder(encoder(inputs)[2])
-        VAE_BN_model = Model(inputs, outputs, name='VAE_BN')
+        encoder_outputs = encoder(inputs)
+        z_mean_out, z_log_var_out, z = encoder_outputs
+        outputs = self.decoder(z)
         
-        # ====== Cost Function (Variational Lower Bound)  ==============
-        # "KL-div (regularizes encoder) and reconstruction loss (of the decoder): see equation(3) in our paper"
-        # 1. KL-Divergence:
-        kl_Loss = 1 + z_log_var - K.square(z_mean) - K.exp(z_log_var)
-        kl_Loss = K.sum(kl_Loss, axis=-1)
-        kl_Loss *= -0.5
-        # 2. Reconstruction Loss
-        reconstruction_loss = mean_squared_error(inputs,outputs) # Use sigmoid at output layer
-        reconstruction_loss *= self.nSpecFeatures
+        # Add VAE loss computation
+        outputs_with_loss = VAELossLayer(self.nSpecFeatures)([z_mean_out, z_log_var_out, inputs, outputs])
+        
+        VAE_BN_model = Model(inputs, outputs_with_loss, name='VAE_BN')
         
         # ========== Compile VAE_BN model ===========
-        model_Loss = K.mean(reconstruction_loss + kl_Loss)
-        VAE_BN_model.add_loss(model_Loss)
         VAE_BN_model.compile(optimizer='adam')
         return VAE_BN_model, encoder
 
