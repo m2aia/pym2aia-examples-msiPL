@@ -1,40 +1,29 @@
-FROM nvidia/cuda:11.8.0-runtime-ubuntu22.04 as system
+FROM ghcr.io/m2aia/python-m2aia-cuda:latest
 
+# Build arguments
+ARG BUILD_DATE
+ARG BUILD_VERSION
 
-# system container dependencies
-RUN apt-get update 
-RUN DEBIAN_FRONTEND=noninteractive TZ=Etc/UTC apt-get -y install tzdata
-RUN apt-get install -q -y --no-install-recommends \
-    libglu1-mesa-dev \
-    libgomp1 \
-    libopenslide-dev \
-    python3 \
-    python3-pip \
-    python3-venv \
-    git \
-    unzip
-RUN apt-get clean 
-RUN rm -rf /var/cache/apt/archives /var/lib/apt/lists/*
+# Labels
+LABEL org.label-schema.schema-version="1.0"
+LABEL org.label-schema.build-date=$BUILD_DATE
+LABEL org.label-schema.version=$BUILD_VERSION
+LABEL org.label-schema.name="m2aia/msiPL"
+LABEL org.label-schema.description="msiPL Peak Learning: deep learning for mass spectrometry imaging (GPU)"
+LABEL org.label-schema.url="https://m2aia.de/"
+LABEL org.label-schema.vendor="m2aia.de"
 
-# Manage to use the virtual environment
-RUN python3 -m venv /.venv
-ENV VIRTUAL_ENV="/.venv"
-RUN export VIRTUAL_ENV
-ENV _OLD_VIRTUAL_PATH="$PATH"
-ENV PATH="$VIRTUAL_ENV/bin:$PATH"
-RUN export PATH
+# Install TensorFlow (protobuf/numpy/scipy pinned for compatibility: TF
+# 2.17.0 requires numpy<2, so numpy and scipy must be resolved together
+# with it here rather than relying on the newer, unpinned versions already
+# installed by the base image)
+RUN pip install --no-cache-dir \
+    protobuf==4.25.3 \
+    "numpy<2" \
+    "scipy<1.14" \
+    tensorflow[and-cuda]==2.17.0
 
-# Install python dependencies
-RUN pip install --upgrade pip
-RUN pip install SimpleITK numpy scipy seaborn matplotlib scikit-learn
-RUN pip install m2aia==0.5.10
+COPY msiPL /msiPL
+COPY app_msiPL.py /app_msiPL.py
 
-# provide app data
-FROM system as application
-RUN pip install protobuf==4.25.3
-RUN pip install tensorflow[and-cuda]==2.17.0
-WORKDIR /
-RUN git clone https://github.com/m2aia/pym2aia-examples-msiPL.git /msiPL
-# COPY app_msiPL.py app_msiPL.py
-WORKDIR /msiPL
-ENTRYPOINT [ "python", "app_msiPL.py" ]
+ENTRYPOINT [ "python", "/app_msiPL.py" ]

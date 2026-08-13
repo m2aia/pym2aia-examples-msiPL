@@ -110,12 +110,20 @@ for label in np.unique(mask):
     vae = VAE_BN(I.GetXAxisDepth(), interim_dim, latent_dim)
     myModel, encoder = vae.get_architecture()
     
+    samples_in_mask = int(np.sum(mask == label))
+
     print(f"Training model for label {label}...")
     print(f"Model will be saved at {model_path}")
-    print("Samples in mask:", np.sum(mask == label))
+    print("Samples in mask:", samples_in_mask)
+
+    # m2aia's BatchGenerator computes the number of batches via floor
+    # division (samples // batch_size), so a batch_size larger than the
+    # available samples yields zero batches. Clamp so small labels still
+    # get at least one batch.
+    label_batch_size = min(batch_size, samples_in_mask)
 
     dataset = m2.Dataset.SpectrumDataset([I],sampling_masks=[mask == label])
-    gen = BatchSequence(dataset, batch_size=batch_size, shuffle=True)
+    gen = BatchSequence(dataset, batch_size=label_batch_size, shuffle=True)
     history = myModel.fit(gen, epochs=epochs)
     myModel.save_weights(model_path)
 
@@ -139,7 +147,8 @@ for label in np.unique(mask):
     # write as csv
     xs = I.GetXAxis()
     ys = I.GetMeanSpectrum()
-    name = "output/" + args.output.split('.')[0] + "_" + str(label) + ".csv"
+    name = args.output.split('.')[0] + "/" +args.output.split('.')[0].split('/')[-1] + "_" + str(label) + ".csv"
+    Path(name).parent.mkdir(parents=True, exist_ok=True)
 
     with open(name, 'w') as f:
         f.write('mz,intensity\n')
